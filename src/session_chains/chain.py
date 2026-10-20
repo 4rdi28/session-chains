@@ -3,7 +3,19 @@ import asyncio
 
 from .http_parser import load_request, parse_response
 
-from .utils import ChainException, UserContext, metadata_path, project_dir, creds_path, config_path, rerror, rprint, rsuccess, rwarning, session_data_path
+from .utils import (
+    ChainException,
+    UserContext,
+    metadata_path,
+    project_dir,
+    creds_path,
+    config_path,
+    rerror,
+    rprint,
+    rsuccess,
+    rwarning,
+    session_data_path,
+)
 from .config_parser import parse_config
 from .http_parser import send_request
 
@@ -18,18 +30,19 @@ async def main(dry_run=False):
         tasks = [asyncio.create_task(persist_unauth(config))]
         tasks.append(asyncio.create_task(persist_colors(creds)))
         if creds:
-            tasks = [asyncio.create_task(chain(entry, config))
-                     for entry in creds]
+            tasks = [asyncio.create_task(chain(entry, config)) for entry in creds]
         await asyncio.gather(*tasks)
     except ChainException:
-        rerror("Error detected. Aborting execution of all session-chains...", throw=False)
+        rerror(
+            "Error detected. Aborting execution of all session-chains...", throw=False
+        )
 
 
 async def chain(user_config, config):
     proto = config["proto"] if "proto" in config else "https"
     seconds = config["repeat_after"] if "repeat_after" in config else 0
     proxy = config["proxy"] if "proxy" in config else None
-    verify = not bool(proxy)
+    verify = config["verify"] if "verify" in config else not bool(proxy)
     done = False
     if not seconds:
         rprint("Executing chain once...")
@@ -42,10 +55,14 @@ async def chain(user_config, config):
     while not done:
         server_set_cookies = dict()
         try:
-            with httpx.Client(http2=True, verify=verify, proxy=proxy, timeout=None, trust_env=False) as client:
+            with httpx.Client(
+                http2=True, verify=verify, proxy=proxy, timeout=None, trust_env=False
+            ) as client:
                 for req in config["requests"]:
                     request = load_request(req["request_file"], ctx)
-                    response = send_request(client, request, proto, server_set_cookies, proxy)
+                    response = send_request(
+                        client, request, proto, server_set_cookies, proxy
+                    )
                     for key, value in response.cookies.items():
                         server_set_cookies[key] = value
                     extracted_values = parse_response(response, req)
@@ -59,7 +76,11 @@ async def chain(user_config, config):
                 else:
                     done = True
         except httpx.HTTPError as e:
-            proxy_msg = "This might be due to a proxy problem - did you forget to start BurpSuite?" if proxy else ""
+            proxy_msg = (
+                "This might be due to a proxy problem - did you forget to start BurpSuite?"
+                if proxy
+                else ""
+            )
             rerror(f"Request failed: {e}. {proxy_msg}")
 
 
@@ -111,12 +132,21 @@ def validate_configs(user_config, config):
         rwarning("User config is empty or invalid...")
     if "proxy" not in config:
         rwarning(
-            "You wont see issued requests in burp as no proxy was specified. Use key 'proxy' to specify a proxy")
+            "You wont see issued requests in burp as no proxy was specified. Use key 'proxy' to specify a proxy"
+        )
     if "proto" not in config:
         rerror("Config is missing key 'proto'. Valid values are: 'http' or 'https'")
     if "repeat_after" not in config:
-        rerror("Config missing key 'repeat_after'. Valid values are '0' to run the chain only once or any value > 0 to repeat the chain after the specified amount of seconds")
-    if "repeat_after" in config and config["repeat_after"] < 60 and config["repeat_after"] != 0:
+        rerror(
+            "Config missing key 'repeat_after'. Valid values are '0' to run the chain only once or any value > 0 to repeat the chain after the specified amount of seconds"
+        )
+    if (
+        "repeat_after" in config
+        and config["repeat_after"] < 60
+        and config["repeat_after"] != 0
+    ):
         rwarning("Chain loop time is shorter than one minute. Is this intended?")
     if "requests" not in config or not config["requests"]:
-        rerror("The configuration is missing references to requests and extraction rules")
+        rerror(
+            "The configuration is missing references to requests and extraction rules"
+        )
